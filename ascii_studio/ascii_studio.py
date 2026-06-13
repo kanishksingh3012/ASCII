@@ -123,6 +123,9 @@ class State(rx.State):
     fx_glow: float = 0.0
     font_size: int = 12
 
+    # --- ui state ---
+    mobile_menu_open: bool = False
+
     # --- image state ---
     use_sample: bool = True
     source_uri: str = ""
@@ -155,6 +158,14 @@ class State(rx.State):
     @rx.var
     def width_chars_label(self) -> str:
         return f"{self.output_width}"
+
+    @rx.var
+    def output_width_pct(self) -> str:
+        """Map the char-width slider (60..320) to a visible on-screen width
+        (40%..100%) so the control has an obvious effect on the preview."""
+        frac = (self.output_width - 60) / (320 - 60)
+        frac = max(0.0, min(1.0, frac))
+        return f"{60 + frac * 40:.0f}%"
 
     # --------------------------- core render -----------------------------
     def _params(self) -> dict:
@@ -238,9 +249,11 @@ class State(rx.State):
         self.fg_hex = v
         self._apply()
 
-    def set_invert(self, v: bool):
-        self.invert_lum = bool(v)
-        self._apply()
+    def toggle_menu(self):
+        self.mobile_menu_open = not self.mobile_menu_open
+
+    def close_menu(self):
+        self.mobile_menu_open = False
 
     def set_charset(self, v: str):
         self.charset = v
@@ -475,12 +488,6 @@ def sidebar():
                     margin_top="0.6rem",
                 ),
             ),
-            rx.box(
-                rx.el.span("Invert luminance mapping", class_name="name"),
-                rx.switch(checked=State.invert_lum, on_change=State.set_invert),
-                class_name="as-switch",
-                margin_top="0.7rem",
-            ),
             # 04 CHARACTER RAMP
             section("04", "Character ramp"),
             rx.box(rx.el.span("Dense → sparse", class_name="name"), class_name="as-row"),
@@ -505,6 +512,7 @@ def sidebar():
             class_name="as-card",
         ),
         class_name="as-sidebar",
+        custom_attrs={"data-open": State.mobile_menu_open},
     )
 
 
@@ -543,8 +551,6 @@ def image_tab():
                         rx.upload_files(upload_id="img_upload")
                     ),
                     class_name="as-drop",
-                    border="none",
-                    padding="0",
                 ),
                 rx.box(
                     rx.el.span("Use sample image", class_name="name"),
@@ -574,7 +580,14 @@ def image_tab():
                     rx.cond(
                         State.output_uri != "",
                         rx.box(
-                            rx.el.img(src=State.output_uri, class_name="as-img"),
+                            rx.box(
+                                rx.el.img(
+                                    src=State.output_uri,
+                                    class_name="as-out-img",
+                                    style={"width": State.output_width_pct},
+                                ),
+                                class_name="as-out-wrap",
+                            ),
                             rx.box(
                                 rx.el.span(State.grid_label),
                                 rx.el.span(State.font_label, class_name="as-panel-meta"),
@@ -617,8 +630,6 @@ def video_tab():
                 multiple=False,
                 on_drop=State.handle_video_upload(rx.upload_files(upload_id="vid_upload")),
                 class_name="as-drop",
-                border="none",
-                padding="0",
             ),
             slider_row("Max duration (s)", State.max_seconds.to_string(), 2, 60, 1,
                        State.max_seconds, State.set_max_seconds),
@@ -699,6 +710,8 @@ def tabs():
 def topbar():
     return rx.box(
         rx.box(
+            rx.el.button("≡", on_click=State.toggle_menu, class_name="as-burger",
+                         custom_attrs={"aria-label": "Toggle controls"}),
             rx.el.span("ASCII.STUDIO"),
             rx.el.span(class_name="cursor"),
             class_name="as-wordmark",
@@ -716,9 +729,13 @@ def index():
     return rx.box(
         topbar(),
         rx.box(
+            class_name="as-backdrop",
+            custom_attrs={"data-open": State.mobile_menu_open},
+            on_click=State.close_menu,
+        ),
+        rx.box(
             sidebar(),
             rx.box(
-                rx.el.div("ASCII.STUDIO", class_name="as-hero"),
                 rx.el.p(
                     "Turn images and video into luminous ASCII — monochrome, "
                     "true-color, or retro-themed. Vectorized, fast, ready to export.",
